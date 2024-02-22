@@ -121,8 +121,8 @@ def fetch(
         for part in track(parts.results, description=f"Downloading {document.name} 🐕‍🦺"):
             try:
                 if not no_images:
-                    img_binary = E.get_document_part_image(document.pk, part.pk)
-
+                    #img_binary = E.get_document_part_image(document.pk, part.pk) does not work if there is metadata is an issue
+                    img_binary = E.get_image(part.image.uri)
                     if not Path(
                         str(os.environ.get("IMAGE_PATH") + "/" + document.name)
                     ).exists():
