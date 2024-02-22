@@ -1,13 +1,14 @@
+import io
+import os 
 import typer
-from typing_extensions import Annotated
+import srsly
+import getpass
+
+from escriptorium_connector import EscriptoriumConnector
 from pathlib import Path
 from rich import print
-from rich.progress import Progress, SpinnerColumn, TextColumn, track
-import srsly
-from escriptorium_connector import EscriptoriumConnector
-from PIL import Image
-import getpass
-import io
+from rich.progress import track
+from typing_extensions import Annotated
 from zipfile import ZipFile
 
 app = typer.Typer()
@@ -15,9 +16,7 @@ app = typer.Typer()
 
 @app.command()
 def fetch(
-    clear_secrets: Annotated[
-        bool, typer.Option(help="Delete the secrets.json file.")
-    ] = False,
+    reset_password: Annotated[bool, typer.Option(help="Reset the password for the escriptorium account.")] = False,
     no_images: Annotated[
         bool, typer.Option(help="Do not download or upload images.")
     ] = False,
@@ -29,46 +28,52 @@ def fetch(
     🐕 escriptorium-fetcher 🐕
     A CLI for downloading data from an eScriptorium server.
     """
-    if clear_secrets:
-        if Path("secrets.json").exists():
-            Path("secrets.json").unlink()
-            print("🐕 secrets.json cleared 🐕")
+    ESCRIPTORIUM_URL = (
+        input(f'Please enter your Escriptorium Url [{os.environ.get("ESCRIPTORIUM_URL","")}]: ')
+        or os.environ.get("ESCRIPTORIUM_URL")
+    )
+    os.environ["ESCRIPTORIUM_URL"] = ESCRIPTORIUM_URL
+    
+    ESCRIPTORIUM_USERNAME = (
+        input(f"Please enter your Escriptorium Username [{os.environ.get('ESCRIPTORIUM_USERNAME','')}]: ")
+        or os.environ.get("ESCRIPTORIUM_USERNAME")
+    )
+    os.environ["ESCRIPTORIUM_USERNAME"] = ESCRIPTORIUM_USERNAME
 
-    if Path("secrets.json").exists():
-        secrets = srsly.read_json("secrets.json")
-    else:
-        secrets = {}
-        secrets["ESCRIPTORIUM_URL"] = (
-            input("Please enter your Escriptorium Url: ")
-            or "https://escriptorium.pennds.org/"
-        )
-        secrets["ESCRIPTORIUM_USERNAME"] = (
-            input("Please enter your Escriptorium Username: ") or "invitado"
-        )
-        secrets["ESCRIPTORIUM_PASSWORD"] = getpass.getpass(
-            "Please enter your Escriptorium Password:"
-        )
+    if reset_password or not os.environ.get("ESCRIPTORIUM_PASSWORD"):
+        if reset_password:
+            os.environ["ESCRIPTORIUM_PASSWORD"] = ""        
+        while not os.environ.get("ESCRIPTORIUM_PASSWORD"):
+            ESCRIPTORIUM_PASSWORD = getpass.getpass(
+                f"Please enter your Escriptorium Password: "
+            )
+            os.environ["ESCRIPTORIUM_PASSWORD"] = ESCRIPTORIUM_PASSWORD
 
-        secrets["IMAGE_PATH"] = input("Please enter the path to the images: ")
-        if secrets["IMAGE_PATH"][-1] == "/":
-            secrets["IMAGE_PATH"] = secrets["IMAGE_PATH"][:-1]
-        if not Path(secrets["IMAGE_PATH"]).exists():
-            Path(secrets["IMAGE_PATH"]).mkdir(parents=True, exist_ok=True)
+    IMAGE_PATH = (
+        input(f"Please enter the path to the images [{os.environ.get('IMAGE_PATH') or str(Path.cwd() / 'images')}]: ")
+        or str(Path.cwd() / 'images')
+    )
+    if IMAGE_PATH[-1] == "/":
+        IMAGE_PATH = IMAGE_PATH[:-1]
+    if not Path(IMAGE_PATH).exists():
+        Path(IMAGE_PATH).mkdir(parents=True, exist_ok=True)
+    os.environ["IMAGE_PATH"] = IMAGE_PATH
+    
+    TRANSCRIPTION_PATH = (
+        input(f"Please enter the path to the transcriptions [{os.environ.get('TRANSCRIPTION_PATH') or str(Path.cwd() / 'alto')} ]: ")
+        or str(Path.cwd() / 'alto')
+    )
+    if TRANSCRIPTION_PATH[-1] == "/":
+        TRANSCRIPTION_PATH = TRANSCRIPTION_PATH[:-1]
+    if not Path(TRANSCRIPTION_PATH).exists():
+        Path(TRANSCRIPTION_PATH).mkdir(parents=True, exist_ok=True)
+    os.environ["TRANSCRIPTION_PATH"] = TRANSCRIPTION_PATH
 
-        secrets["TRANSCRIPTION_PATH"] = input(
-            "Please enter the path to the transcriptions: "
-        )
-        if secrets["TRANSCRIPTION_PATH"][-1] == "/":
-            secrets["TRANSCRIPTION_PATH"] = secrets["TRANSCRIPTION_PATH"][:-1]
-        if not Path(secrets["TRANSCRIPTION_PATH"]).exists():
-            Path(secrets["TRANSCRIPTION_PATH"]).mkdir(parents=True, exist_ok=True)
-
-        srsly.write_json("secrets.json", secrets)
     # connect to escriptorium
     E = EscriptoriumConnector(
-        secrets["ESCRIPTORIUM_URL"],
-        secrets["ESCRIPTORIUM_USERNAME"],
-        secrets["ESCRIPTORIUM_PASSWORD"],
+        os.environ.get("ESCRIPTORIUM_URL"),
+        os.environ.get("ESCRIPTORIUM_USERNAME"),
+        os.environ.get("ESCRIPTORIUM_PASSWORD")
     )
     # get list of projects
     projects = E.get_projects()
@@ -119,14 +124,14 @@ def fetch(
                     img_binary = E.get_document_part_image(document.pk, part.pk)
 
                     if not Path(
-                        str(secrets["IMAGE_PATH"] + "/" + document.name)
+                        str(os.environ.get("IMAGE_PATH") + "/" + document.name)
                     ).exists():
-                        Path(str(secrets["IMAGE_PATH"] + "/" + document.name)).mkdir(
+                        Path(str(os.environ.get("IMAGE_PATH") + "/" + document.name)).mkdir(
                             parents=True, exist_ok=True
                         )
                     Path(
                         str(
-                            secrets["IMAGE_PATH"]
+                            os.environ.get("IMAGE_PATH")
                             + "/"
                             + document.name
                             + "/"
@@ -141,18 +146,18 @@ def fetch(
                         with z.open(z.namelist()[0]) as f:
                             transcription = f.read()
                             if not Path(
-                                str(secrets["TRANSCRIPTION_PATH"] + "/" + document.name)
+                                str(os.environ.get("TRANSCRIPTION_PATH") + "/" + document.name)
                             ).exists():
                                 Path(
                                     str(
-                                        secrets["TRANSCRIPTION_PATH"]
+                                        os.environ.get("TRANSCRIPTION_PATH")
                                         + "/"
                                         + document.name
                                     )
                                 ).mkdir(parents=True, exist_ok=True)
                             Path(
                                 str(
-                                    secrets["TRANSCRIPTION_PATH"]
+                                    os.environ.get("TRANSCRIPTION_PATH")
                                     + "/"
                                     + document.name
                                     + "/"
