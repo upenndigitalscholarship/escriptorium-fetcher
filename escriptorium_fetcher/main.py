@@ -3,6 +3,7 @@ import os
 import typer
 import srsly
 import getpass
+import requests 
 
 from escriptorium_connector import EscriptoriumConnector
 from pathlib import Path
@@ -76,24 +77,27 @@ def fetch(
         os.environ.get("ESCRIPTORIUM_PASSWORD")
     )
     # get list of projects
-    projects = E.get_projects()
-    project_names = [p.name for p in projects.results]
-    for i, name in enumerate(project_names):
-        print(
-            f"[bold green_yellow]{i}[/bold green_yellow] [bold white]{name}[/bold white]"
-        )
-    project_name = typer.prompt("🐾 Select a project to fetch")
-    # if the user enters a number, use that to select the document
-    if project_name.isdigit():
-        project_pk = projects.results[int(project_name)].id
-        project_slug = projects.results[int(project_name)].slug
-        E.set_connector_project_by_pk(project_pk)
-        print(
-            f"[bold green_yellow] 🦴 Fetching {E.project_name}...[/bold green_yellow]"
-        )
-    else:
-        project_slug = None
-
+    projects = requests.get(f"{os.environ.get('ESCRIPTORIUM_URL')}/api/projects", headers=E.http.headers )
+    if projects.status_code == 200:
+        projects = projects.json()
+        project_results = projects['results']
+        project_names = [p['name'] for p in project_results]
+        for i, name in enumerate(project_names):
+            print(
+                f"[bold green_yellow]{i}[/bold green_yellow] [bold white]{name}[/bold white]"
+            )
+        project_name = typer.prompt("🐾 Select a project to fetch")
+        # if the user enters a number, use that to select the document
+        if project_name.isdigit():
+            proj_name = project_results[int(project_name)]['name']
+            project_slug = project_results[int(project_name)]['slug']
+           
+            print(
+            f"[bold green_yellow] 🦴 Fetching {project_slug}...[/bold green_yellow]"
+            )
+        else:
+            project_slug = None
+    
     # get each document in the project
     documents = E.get_documents()
     documents = [d for d in documents.results if d.project == project_slug]
@@ -111,7 +115,7 @@ def fetch(
             transcription_pk = transcriptions[int(selection)].pk
             transcription_name = transcriptions[int(selection)].name
             print(
-                f"[bold green_yellow] 🐶 Using text from {transcription_name}...[/bold green_yellow]"
+                f"[bold green_yellow] 🐶 Fetching text from {transcription_name}...[/bold green_yellow]"
             )
         else:
             print("Please enter the number of the transcription to fetch 🐩")
@@ -161,12 +165,12 @@ def fetch(
                                     + "/"
                                     + document.name
                                     + "/"
-                                    + part.name
+                                    + part.filename.split(".")[0]
                                     + ".xml"
                                 )
                             ).write_bytes(transcription)
             except Exception as e:
-                print(f"[bold red]Error[/bold red] {part.name}: {e}")
+                print(f"[bold red]Error[/bold red] {part.title}: {e}")
     print("🦮 All Done 🦮")
 
 
